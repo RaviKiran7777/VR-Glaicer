@@ -50,29 +50,21 @@ public class VRRenderer implements GLSurfaceView.Renderer {
     private boolean isPastMode = false;
     private String lastInfoText = "";
 
-    // Time-based AI update
-    private long lastAiTime = 0;
-
     private static final String vertexShader =
-        "uniform mat4 uVPMatrix;" +
+        "uniform mat4 uMVPMatrix;" +
         "attribute vec4 vPosition;" +
         "attribute vec4 vColor;" +
         "varying vec4 _vColor;" +
-        "varying float vDist;" +
         "void main() {" +
-        "  gl_Position = uVPMatrix * vPosition;" +
+        "  gl_Position = uMVPMatrix * vPosition;" +
         "  _vColor = vColor;" +
-        "  vDist = gl_Position.z;" +
         "}";
 
     private static final String fragmentShader =
         "precision mediump float;" +
         "varying vec4 _vColor;" +
-        "varying float vDist;" +
         "void main() {" +
-        "  float fog = clamp((vDist - 25.0) / 60.0, 0.0, 1.0);" +
-        "  vec4 fogCol = vec4(0.75, 0.87, 0.96, 1.0);" +
-        "  gl_FragColor = mix(_vColor, fogCol, fog);" +
+        "  gl_FragColor = _vColor;" +
         "}";
 
     public VRRenderer(SensorHandler sh, GazeInfoManager gm) {
@@ -122,10 +114,10 @@ public class VRRenderer implements GLSurfaceView.Renderer {
 
         iceChunkModel = new Cube(shaderProgram, 0.75f, 0.9f, 1.0f);
 
-        // Animals — positioned on the ice
-        polarBear = new PolarBear(shaderProgram, 8f, 0f, -10f);
-        seal      = new Seal(shaderProgram, -7f, 0f, -8f);
-        arcticFox = new ArcticFox(shaderProgram, 12f, 0f, -5f);
+        // Animals — repositioned for better observation of the glacier face
+        polarBear = new PolarBear(shaderProgram, 12f, 0.1f, -8f);
+        seal      = new Seal(shaderProgram, -10f, 0.1f, -14f);
+        arcticFox = new ArcticFox(shaderProgram, 18f, 0.1f, -12f);
 
         // UI
         crosshair    = new Crosshair();
@@ -133,12 +125,12 @@ public class VRRenderer implements GLSurfaceView.Renderer {
         titleOverlay = new TextOverlay();
         titleOverlay.updateText("VR Glacier Observation");
 
-        // Register all educational gaze targets
-        gazeInfoManager.registerTarget(InfoData.TARGET_GLACIER, 0f, 12f, -30f, 25f, InfoData.getFact(InfoData.TARGET_GLACIER));
-        gazeInfoManager.registerTarget(InfoData.TARGET_WATER, 0f, 0f, -22f, 20f, InfoData.getFact(InfoData.TARGET_WATER));
-        gazeInfoManager.registerTarget(InfoData.TARGET_BEAR, 8f, 1f, -10f, 3f, InfoData.getFact(InfoData.TARGET_BEAR));
-        gazeInfoManager.registerTarget(InfoData.TARGET_SEAL, -7f, 0.5f, -8f, 3f, InfoData.getFact(InfoData.TARGET_SEAL));
-        gazeInfoManager.registerTarget(InfoData.TARGET_FOX, 12f, 0.5f, -5f, 2f, InfoData.getFact(InfoData.TARGET_FOX));
+        // Register all educational gaze targets (Updated for new Z-depths)
+        gazeInfoManager.registerTarget(InfoData.TARGET_GLACIER, 0f, 12f, -25f, 30f, InfoData.getFact(InfoData.TARGET_GLACIER));
+        gazeInfoManager.registerTarget(InfoData.TARGET_WATER, 0f, 0f, -22f, 25f, InfoData.getFact(InfoData.TARGET_WATER));
+        gazeInfoManager.registerTarget(InfoData.TARGET_BEAR, 12f, 1f, -8f, 5f, InfoData.getFact(InfoData.TARGET_BEAR));
+        gazeInfoManager.registerTarget(InfoData.TARGET_SEAL, -10f, 1f, -14f, 5f, InfoData.getFact(InfoData.TARGET_SEAL));
+        gazeInfoManager.registerTarget(InfoData.TARGET_FOX, 18f, 1f, -12f, 4f, InfoData.getFact(InfoData.TARGET_FOX));
     }
 
     private int shaderProgram;
@@ -180,16 +172,10 @@ public class VRRenderer implements GLSurfaceView.Renderer {
         gazeInfoManager.checkGaze(camX, camY, camZ, fx, fy, fz);
 
         // Snow fact when looking up
-        if (pitch < -25f) {
-            gazeInfoManager.showFact(InfoData.getFact(InfoData.TARGET_SNOW));
-        }
+        if (pitch < -25f) gazeInfoManager.showFact(InfoData.getFact(InfoData.TARGET_SNOW));
 
-        // Physics (once per frame)
+        // Physics
         calvingManager.update();
-        splashParticles.update();
-
-        // Animal AI (once per frame)
-        updateAnimals();
 
         // LEFT EYE
         GLES20.glViewport(0, 0, width / 2, height);
@@ -211,27 +197,45 @@ public class VRRenderer implements GLSurfaceView.Renderer {
     }
 
     private void drawScene(float[] vp) {
-        // 1. ICE GROUND
+        // 1. OPAQUE ENVIRONMENT
         Matrix.setIdentityM(model, 0);
         Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
         iceGround.draw(scratch);
 
-        // 2. GLACIER WALL (Only show TODAY mode if NOT pastMode)
         if (!isPastMode) {
             Matrix.setIdentityM(model, 0);
+            Matrix.translateM(model, 0, 0, 0, -25f); // Move wall back
             Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
             glacierWall.draw(scratch);
         }
 
-        // 3. MELT WATER
+        // 2. ANIMALS (Opaque - Draw before transparent water)
+        // Polar Bear
         Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, polarBear.worldX, polarBear.worldY, polarBear.worldZ);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        polarBear.draw(scratch);
+
+        // Seal
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, seal.worldX, seal.worldY, seal.worldZ);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        seal.draw(scratch);
+
+        // Arctic Fox
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, arcticFox.worldX, arcticFox.worldY, arcticFox.worldZ);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        arcticFox.draw(scratch);
+
+        // 3. TRANSPARENT / ANIMATED ENVIRONMENT (Draw LAST)
+        // Static meltwater base
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, 0, 0, -22f); // Align with wall base
         Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
         meltWater.draw(scratch);
 
-        // 4. SNOW PARTICLES
-        snowParticles.draw(vp);
-
-        // 5. CALVING CHUNKS
+        // Calving chunks
         for (CalvingManager.IceChunk chunk : calvingManager.getActiveChunks()) {
             Matrix.setIdentityM(model, 0);
             Matrix.translateM(model, 0, chunk.x, chunk.y, chunk.z);
@@ -243,38 +247,31 @@ public class VRRenderer implements GLSurfaceView.Renderer {
             iceChunkModel.draw(scratch);
         }
 
-        // 6. SPLASH PARTICLES
-        splashParticles.draw(vp);
-
-        // 7. ANIMALS
-        drawAnimal(vp, polarBear);
-        drawAnimal(vp, seal);
-        drawAnimal(vp, arcticFox);
-    }
-
-    private void drawAnimal(float[] vp, BaseShape animal) {
-        Matrix.setIdentityM(model, 0);
-        Matrix.translateM(model, 0, animal.worldX, animal.worldY, animal.worldZ);
-        Matrix.rotateM(model, 0, animal.rotationY, 0, 1, 0);
-        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
-        animal.draw(scratch);
+        // Snow and Splashes
+        snowParticles.updateAndDraw(vp, camX, camZ);
+        splashParticles.updateAndDraw(vp);
     }
 
     private void drawUI() {
-        crosshair.draw(uiProj);
-        infoOverlay.draw(uiProj, height - 200f);
-        titleOverlay.draw(uiProj, 100f);
-    }
+        // 1. CROSSHAIR (Center of UI Viewport)
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, width / 4f, height / 2f, 0);
+        Matrix.multiplyMM(scratch, 0, uiProj, 0, model, 0);
+        crosshair.draw(scratch);
 
-    private void updateAnimals() {
-        long now = System.currentTimeMillis();
-        if (lastAiTime == 0) { lastAiTime = now; return; }
-        float dt = (now - lastAiTime) / 1000f;
-        lastAiTime = now;
+        // 2. INFO PANEL (Bottom Left)
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, 20f, height - 200f, 0);
+        Matrix.scaleM(model, 0, 480f, 180f, 1f);
+        Matrix.multiplyMM(scratch, 0, uiProj, 0, model, 0);
+        infoOverlay.draw(scratch);
 
-        polarBear.update(dt);
-        seal.update(dt);
-        arcticFox.update(dt);
+        // 3. TITLE PANEL (Top Left)
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, 20f, 80f, 0);
+        Matrix.scaleM(model, 0, 350f, 80f, 1f);
+        Matrix.multiplyMM(scratch, 0, uiProj, 0, model, 0);
+        titleOverlay.draw(scratch);
     }
 
     public static int loadShader(int type, String shaderCode) {

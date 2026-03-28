@@ -36,7 +36,7 @@ public class CalvingManager {
     }
 
     private static final float GRAVITY = -12.5f; // slightly stronger for dramatic effect
-    public static final float WALL_Z = -30f;
+    public static final float WALL_Z = -25.0f;
     public static final float WALL_WIDTH = 80f;
 
     private static final float CALVING_MIN_S = 10f;

@@ -24,7 +24,7 @@ public class SplashParticles {
         "varying float vAlpha;" +
         "void main() {" +
         "  gl_Position = uMVPMatrix * vPosition;" +
-        "  gl_PointSize = max(4.0, 20.0 / (gl_Position.w + 1.0));" +
+        "  gl_PointSize = max(10.0, 50.0 / (gl_Position.w + 1.0));" +
         "  vAlpha = aAlpha;" +
         "}";
 
@@ -82,9 +82,9 @@ public class SplashParticles {
         lastTime = System.currentTimeMillis();
 
         for (int i = 0; i < PARTICLE_COUNT; i++) {
-            posX[i] = x + (rand.nextFloat() - 0.5f) * 3f;
-            posY[i] = 0.3f;
-            posZ[i] = z + (rand.nextFloat() - 0.5f) * 3f;
+            posX[i] = x + (rand.nextFloat() - 0.5f) * 2f;
+            posY[i] = 1.0f; // Start well above the water waves
+            posZ[i] = z + (rand.nextFloat() - 0.5f) * 2f;
 
             // Dramatic upward explosion + wide radial scatter
             float angle = rand.nextFloat() * (float)(Math.PI * 2);
@@ -130,6 +130,8 @@ public class SplashParticles {
 
     /** Draws the current particle state. Call once per eye per frame. */
     public void updateAndDraw(float[] mvpMatrix) {
+        if (!active) return;
+        update(); // Ensure physics are calculated before draw
         if (!active) return;
         GLES20.glUseProgram(mProgram);
         GLES20.glEnable(GLES20.GL_BLEND);
