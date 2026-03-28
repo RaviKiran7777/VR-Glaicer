@@ -34,62 +34,38 @@ public class VRRenderer implements GLSurfaceView.Renderer {
     private TextOverlay infoOverlay;
     private TextOverlay titleOverlay;
 
-    // Shared shader
-    private int shaderProgram;
+    // Projection Matrices
+    private final float[] leftProj = new float[16];
+    private final float[] rightProj = new float[16];
+    private final float[] uiProj = new float[16];
+    private final float[] viewMat = new float[16];
+    private final float[] vpMat = new float[16];
+    private final float[] model = new float[16];
+    private final float[] scratch = new float[16];
 
-    // Matrices
-    private float[] leftProj  = new float[16];
-    private float[] rightProj = new float[16];
-    private float[] viewMat   = new float[16];
-    private float[] vpMat     = new float[16];
-    private float[] scratch   = new float[16];
-    private float[] model     = new float[16];
-    private float[] uiProj    = new float[16];
-    private float[] uiModel   = new float[16];
-    private float[] uiMVP     = new float[16];
-
-    // Camera
-    private float camX = 0f, camY = 1.6f, camZ = 20f;
-    private static final float EYE_OFFSET = 0.05f;
+    // State
+    private float camX = 0, camY = 1.6f, camZ = 5f;
     private int width, height;
-
-    // Climate mode
+    private static final float EYE_OFFSET = 0.035f;
     private boolean isPastMode = false;
-
-    // Deferred UI state
     private String lastInfoText = "";
-    private boolean needsInfoUpdate = false;
 
-    // Animal AI state
-    private long lastFrameTime = 0;
-    // Polar bear — patrol along X
-    private float bearDirX = 1f;
-    private float bearSpeed = 0.8f;
-    private float bearAngle = 0f;
-    // Seal — slow random shuffle
-    private float sealTimer = 0f;
-    private float sealTargetX, sealTargetZ;
-    private float sealBaseX = -7f, sealBaseZ = -8f;
-    // Arctic fox — dart to random points
-    private float foxTargetX = 12f, foxTargetZ = -5f;
-    private float foxTimer = 0f;
-    private float foxAngle = 0f;
-    private Random animRand = new Random();
+    // Time-based AI update
+    private long lastAiTime = 0;
 
-    // Vertex + Fragment shaders with distance fog
-    private final String vertexShader =
-        "uniform mat4 uMVPMatrix;" +
+    private static final String vertexShader =
+        "uniform mat4 uVPMatrix;" +
         "attribute vec4 vPosition;" +
         "attribute vec4 vColor;" +
         "varying vec4 _vColor;" +
         "varying float vDist;" +
         "void main() {" +
-        "  gl_Position = uMVPMatrix * vPosition;" +
+        "  gl_Position = uVPMatrix * vPosition;" +
         "  _vColor = vColor;" +
-        "  vDist = gl_Position.w;" +
+        "  vDist = gl_Position.z;" +
         "}";
 
-    private final String fragmentShader =
+    private static final String fragmentShader =
         "precision mediump float;" +
         "varying vec4 _vColor;" +
         "varying float vDist;" +
@@ -102,6 +78,12 @@ public class VRRenderer implements GLSurfaceView.Renderer {
     public VRRenderer(SensorHandler sh, GazeInfoManager gm) {
         this.sensorHandler = sh;
         this.gazeInfoManager = gm;
+    }
+
+    private SoundEngine soundEngine;
+    public void setSoundEngine(SoundEngine se) {
+        this.soundEngine = se;
+        if (calvingManager != null) calvingManager.setSoundEngine(se);
     }
 
     public void moveForward() {
@@ -136,6 +118,7 @@ public class VRRenderer implements GLSurfaceView.Renderer {
         snowParticles = new SnowParticles();
         splashParticles = new SplashParticles();
         calvingManager = new CalvingManager(splashParticles, gazeInfoManager);
+        if (soundEngine != null) calvingManager.setSoundEngine(soundEngine);
 
         iceChunkModel = new Cube(shaderProgram, 0.75f, 0.9f, 1.0f);
 
@@ -150,13 +133,15 @@ public class VRRenderer implements GLSurfaceView.Renderer {
         titleOverlay = new TextOverlay();
         titleOverlay.updateText("VR Glacier Observation");
 
-        // Register gaze targets
+        // Register all educational gaze targets
         gazeInfoManager.registerTarget(InfoData.TARGET_GLACIER, 0f, 12f, -30f, 25f, InfoData.getFact(InfoData.TARGET_GLACIER));
-        gazeInfoManager.registerTarget(InfoData.TARGET_WATER, 0f, 0f, -22f, 12f, InfoData.getFact(InfoData.TARGET_WATER));
-        gazeInfoManager.registerTarget(InfoData.TARGET_BEAR, polarBear.worldX, 1f, polarBear.worldZ, 5f, InfoData.getFact(InfoData.TARGET_BEAR));
-        gazeInfoManager.registerTarget(InfoData.TARGET_SEAL, seal.worldX, 0.5f, seal.worldZ, 5f, InfoData.getFact(InfoData.TARGET_SEAL));
-        gazeInfoManager.registerTarget(InfoData.TARGET_FOX, arcticFox.worldX, 0.5f, arcticFox.worldZ, 5f, InfoData.getFact(InfoData.TARGET_FOX));
+        gazeInfoManager.registerTarget(InfoData.TARGET_WATER, 0f, 0f, -22f, 20f, InfoData.getFact(InfoData.TARGET_WATER));
+        gazeInfoManager.registerTarget(InfoData.TARGET_BEAR, 8f, 1f, -10f, 3f, InfoData.getFact(InfoData.TARGET_BEAR));
+        gazeInfoManager.registerTarget(InfoData.TARGET_SEAL, -7f, 0.5f, -8f, 3f, InfoData.getFact(InfoData.TARGET_SEAL));
+        gazeInfoManager.registerTarget(InfoData.TARGET_FOX, 12f, 0.5f, -5f, 2f, InfoData.getFact(InfoData.TARGET_FOX));
     }
+
+    private int shaderProgram;
 
     @Override
     public void onSurfaceChanged(GL10 unused, int w, int h) {
@@ -231,148 +216,71 @@ public class VRRenderer implements GLSurfaceView.Renderer {
         Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
         iceGround.draw(scratch);
 
-        // 2. MELT WATER (near glacier base)
-        float waterScale = isPastMode ? 0.3f : 1.0f;
+        // 2. GLACIER WALL (Only show TODAY mode if NOT pastMode)
+        if (!isPastMode) {
+            Matrix.setIdentityM(model, 0);
+            Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+            glacierWall.draw(scratch);
+        }
+
+        // 3. MELT WATER
         Matrix.setIdentityM(model, 0);
-        Matrix.translateM(model, 0, 0f, 0.02f, -22f);
-        Matrix.scaleM(model, 0, waterScale, 1f, waterScale);
         Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
         meltWater.draw(scratch);
 
-        // 3. GLACIER WALL
-        float wallScaleY = isPastMode ? 1.5f : 1.0f;
-        Matrix.setIdentityM(model, 0);
-        Matrix.translateM(model, 0, 0f, 0f, CalvingManager.WALL_Z);
-        Matrix.scaleM(model, 0, 1f, wallScaleY, 1f);
-        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
-        glacierWall.draw(scratch);
+        // 4. SNOW PARTICLES
+        snowParticles.draw(vp);
 
-        // 4. FALLING ICE CHUNKS (with tumbling rotation)
-        if (!isPastMode) {
-            List<CalvingManager.IceChunk> chunks = calvingManager.getActiveChunks();
-            for (CalvingManager.IceChunk c : chunks) {
-                Matrix.setIdentityM(model, 0);
-                Matrix.translateM(model, 0, c.x, c.y, c.z);
-                Matrix.rotateM(model, 0, c.rotX, 1f, 0f, 0f);
-                Matrix.rotateM(model, 0, c.rotY, 0f, 1f, 0f);
-                Matrix.rotateM(model, 0, c.rotZ, 0f, 0f, 1f);
-                Matrix.scaleM(model, 0, c.scale, c.scale * 0.7f, c.scale * 0.8f);
-                Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
-                iceChunkModel.draw(scratch);
-            }
+        // 5. CALVING CHUNKS
+        for (CalvingManager.IceChunk chunk : calvingManager.getActiveChunks()) {
+            Matrix.setIdentityM(model, 0);
+            Matrix.translateM(model, 0, chunk.x, chunk.y, chunk.z);
+            Matrix.rotateM(model, 0, chunk.rotX, 1, 0, 0);
+            Matrix.rotateM(model, 0, chunk.rotY, 0, 1, 0);
+            Matrix.rotateM(model, 0, chunk.rotZ, 0, 0, 1);
+            Matrix.scaleM(model, 0, chunk.scale, chunk.scale * 0.7f, chunk.scale * 0.8f);
+            Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+            iceChunkModel.draw(scratch);
         }
 
-        // 5. SPLASH PARTICLES
-        Matrix.setIdentityM(model, 0);
-        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
-        splashParticles.updateAndDraw(scratch);
+        // 6. SPLASH PARTICLES
+        splashParticles.draw(vp);
 
-        // 6. ANIMALS (with facing rotation)
-        Matrix.setIdentityM(model, 0);
-        Matrix.translateM(model, 0, polarBear.worldX, polarBear.worldY, polarBear.worldZ);
-        Matrix.rotateM(model, 0, bearAngle, 0f, 1f, 0f);
-        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
-        polarBear.draw(scratch);
+        // 7. ANIMALS
+        drawAnimal(vp, polarBear);
+        drawAnimal(vp, seal);
+        drawAnimal(vp, arcticFox);
+    }
 
+    private void drawAnimal(float[] vp, BaseShape animal) {
         Matrix.setIdentityM(model, 0);
-        Matrix.translateM(model, 0, seal.worldX, seal.worldY, seal.worldZ);
+        Matrix.translateM(model, 0, animal.worldX, animal.worldY, animal.worldZ);
+        Matrix.rotateM(model, 0, animal.rotationY, 0, 1, 0);
         Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
-        seal.draw(scratch);
-
-        Matrix.setIdentityM(model, 0);
-        Matrix.translateM(model, 0, arcticFox.worldX, arcticFox.worldY, arcticFox.worldZ);
-        Matrix.rotateM(model, 0, foxAngle, 0f, 1f, 0f);
-        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
-        arcticFox.draw(scratch);
-
-        // 7. SNOW PARTICLES (last)
-        snowParticles.updateAndDraw(vp, camX, camZ);
+        animal.draw(scratch);
     }
 
     private void drawUI() {
-        GLES20.glDisable(GLES20.GL_DEPTH_TEST);
-        float ew = width / 2f;
-
-        // Title — top center
-        Matrix.setIdentityM(uiModel, 0);
-        Matrix.translateM(uiModel, 0, (ew / 2f) - 256f, 10f, 0f);
-        Matrix.scaleM(uiModel, 0, 512f, 512f, 1f);
-        Matrix.multiplyMM(uiMVP, 0, uiProj, 0, uiModel, 0);
-        titleOverlay.draw(uiMVP);
-
-        // Info panel — bottom center
-        String fact = gazeInfoManager.getCurrentFact();
-        if (!fact.isEmpty()) {
-            Matrix.setIdentityM(uiModel, 0);
-            Matrix.translateM(uiModel, 0, (ew / 2f) - 256f, height - 280f, 0f);
-            Matrix.scaleM(uiModel, 0, 512f, 512f, 1f);
-            Matrix.multiplyMM(uiMVP, 0, uiProj, 0, uiModel, 0);
-            infoOverlay.draw(uiMVP);
-        }
-
-        // Crosshair — center
-        Matrix.setIdentityM(uiModel, 0);
-        Matrix.translateM(uiModel, 0, ew / 2f, height / 2f, 0f);
-        Matrix.multiplyMM(uiMVP, 0, uiProj, 0, uiModel, 0);
-        crosshair.draw(uiMVP);
-
-        GLES20.glEnable(GLES20.GL_DEPTH_TEST);
+        crosshair.draw(uiProj);
+        infoOverlay.draw(uiProj, height - 200f);
+        titleOverlay.draw(uiProj, 100f);
     }
 
     private void updateAnimals() {
         long now = System.currentTimeMillis();
-        if (lastFrameTime == 0) { lastFrameTime = now; return; }
-        float dt = (now - lastFrameTime) / 1000f;
-        if (dt > 0.1f) dt = 0.1f;
-        lastFrameTime = now;
+        if (lastAiTime == 0) { lastAiTime = now; return; }
+        float dt = (now - lastAiTime) / 1000f;
+        lastAiTime = now;
 
-        // --- POLAR BEAR: patrol along X axis between -20 and 20 ---
-        polarBear.worldX += bearDirX * bearSpeed * dt;
-        if (polarBear.worldX > 20f) { bearDirX = -1f; }
-        if (polarBear.worldX < -20f) { bearDirX = 1f; }
-        // Face walking direction (90° or -90°)
-        bearAngle = (bearDirX > 0) ? -90f : 90f;
-
-        // --- SEAL: slow random shuffle near spawn point ---
-        sealTimer -= dt;
-        if (sealTimer <= 0f) {
-            sealTargetX = sealBaseX + (animRand.nextFloat() * 4f - 2f);
-            sealTargetZ = sealBaseZ + (animRand.nextFloat() * 4f - 2f);
-            sealTimer = 3f + animRand.nextFloat() * 5f; // wait 3-8s between moves
-        }
-        // Slowly move toward target
-        float sdx = sealTargetX - seal.worldX;
-        float sdz = sealTargetZ - seal.worldZ;
-        float sDist = (float) Math.sqrt(sdx*sdx + sdz*sdz);
-        if (sDist > 0.1f) {
-            float sSpeed = 0.3f; // very slow
-            seal.worldX += (sdx / sDist) * sSpeed * dt;
-            seal.worldZ += (sdz / sDist) * sSpeed * dt;
-        }
-
-        // --- ARCTIC FOX: dart to random nearby points ---
-        foxTimer -= dt;
-        if (foxTimer <= 0f) {
-            foxTargetX = 5f + animRand.nextFloat() * 20f;
-            foxTargetZ = -15f + animRand.nextFloat() * 20f;
-            foxTimer = 2f + animRand.nextFloat() * 4f; // every 2-6s
-        }
-        float fdx = foxTargetX - arcticFox.worldX;
-        float fdz = foxTargetZ - arcticFox.worldZ;
-        float fDist = (float) Math.sqrt(fdx*fdx + fdz*fdz);
-        if (fDist > 0.2f) {
-            float fSpeed = 2.5f; // quick!
-            arcticFox.worldX += (fdx / fDist) * fSpeed * dt;
-            arcticFox.worldZ += (fdz / fDist) * fSpeed * dt;
-            // Face movement direction
-            foxAngle = (float) Math.toDegrees(Math.atan2(-fdx, -fdz));
-        }
+        polarBear.update(dt);
+        seal.update(dt);
+        arcticFox.update(dt);
     }
 
-    private int loadShader(int type, String code) {
-        int s = GLES20.glCreateShader(type);
-        GLES20.glShaderSource(s, code);
-        GLES20.glCompileShader(s);
-        return s;
+    public static int loadShader(int type, String shaderCode) {
+        int shader = GLES20.glCreateShader(type);
+        GLES20.glShaderSource(shader, shaderCode);
+        GLES20.glCompileShader(shader);
+        return shader;
     }
 }

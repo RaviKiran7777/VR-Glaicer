@@ -6,9 +6,14 @@ import java.util.List;
 /**
  * Manages gaze-based interaction for showing educational info.
  * When the user stares at a registered target for 2 seconds,
- * the associated fact text is displayed.
+ * the associated fact is displayed AND spoken aloud via TTS.
  */
 public class GazeInfoManager {
+
+    /** Listener for when a new fact should be spoken. */
+    public interface OnFactListener {
+        void onNewFact(String factText);
+    }
 
     public static class GazeTarget {
         public int id;
@@ -28,8 +33,14 @@ public class GazeInfoManager {
     private static final long GAZE_TRIGGER_MS = 2000;
 
     private String displayedFact = "";
+    private String lastSpokenFact = "";  // Prevent speaking the same fact twice in a row
     private long factEndTime = 0;
     private boolean targeting = false;
+    private OnFactListener factListener;
+
+    public void setOnFactListener(OnFactListener listener) {
+        this.factListener = listener;
+    }
 
     public void registerTarget(int id, float x, float y, float z, float radius, String fact) {
         targets.add(new GazeTarget(id, x, y, z, radius, fact));
@@ -55,8 +66,7 @@ public class GazeInfoManager {
                 } else {
                     long elapsed = System.currentTimeMillis() - gazeStartTime;
                     if (elapsed >= GAZE_TRIGGER_MS) {
-                        displayedFact = t.fact;
-                        factEndTime = System.currentTimeMillis() + 6000;
+                        triggerFact(t.fact);
                     }
                 }
                 return;
@@ -67,8 +77,20 @@ public class GazeInfoManager {
 
     /** Trigger a fact display directly (e.g. on calving event) */
     public void showFact(String fact) {
+        triggerFact(fact);
+    }
+
+    private void triggerFact(String fact) {
         displayedFact = fact;
-        factEndTime = System.currentTimeMillis() + 5000;
+        factEndTime = System.currentTimeMillis() + 8000; // 8 seconds to read + listen
+
+        // Speak the fact if it's different from last one
+        if (!fact.equals(lastSpokenFact) && factListener != null) {
+            lastSpokenFact = fact;
+            // Clean newlines for speech
+            String clean = fact.replace("\n", " ");
+            factListener.onNewFact(clean);
+        }
     }
 
     public String getCurrentFact() {

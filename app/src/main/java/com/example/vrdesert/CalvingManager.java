@@ -46,6 +46,7 @@ public class CalvingManager {
     private final List<IceChunk> activeChunks = new CopyOnWriteArrayList<>();
     private final SplashParticles splashParticles;
     private final GazeInfoManager gazeInfoManager;
+    private SoundEngine soundEngine;
     private final Random rand = new Random();
 
     private float nextCalvingIn;
@@ -58,6 +59,8 @@ public class CalvingManager {
         this.lastUpdateTime = System.currentTimeMillis();
         this.nextCalvingIn = CALVING_MIN_S;
     }
+
+    public void setSoundEngine(SoundEngine se) { this.soundEngine = se; }
 
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
 
@@ -73,6 +76,7 @@ public class CalvingManager {
                 spawnCalvingEvent();
                 nextCalvingIn = CALVING_MIN_S + rand.nextFloat() * (CALVING_MAX_S - CALVING_MIN_S);
                 gazeInfoManager.showFact(InfoData.getFact(InfoData.TARGET_CALVING));
+                if (soundEngine != null) soundEngine.playCrack();
             }
         }
 
@@ -104,6 +108,7 @@ public class CalvingManager {
                 c.rotSpeedX = 0; c.rotSpeedY = 0; c.rotSpeedZ = 0;
                 c.hasImpacted = true;
                 splashParticles.trigger(c.x, c.z);
+                if (soundEngine != null) soundEngine.playSplash();
             }
         }
         activeChunks.removeAll(toRemove);
