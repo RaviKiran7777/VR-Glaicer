@@ -13,7 +13,7 @@ import java.util.Random;
  */
 public class SplashParticles {
 
-    private static final int PARTICLE_COUNT = 200;
+    private static final int PARTICLE_COUNT = 300;
     private static final float GRAVITY = -9.8f;
     private static final float LIFETIME = 1.8f; // seconds before particles disappear
 
@@ -82,16 +82,16 @@ public class SplashParticles {
         lastTime = System.currentTimeMillis();
 
         for (int i = 0; i < PARTICLE_COUNT; i++) {
-            posX[i] = x + (rand.nextFloat() - 0.5f) * 2f;
-            posY[i] = 0.2f;
-            posZ[i] = z + (rand.nextFloat() - 0.5f) * 2f;
+            posX[i] = x + (rand.nextFloat() - 0.5f) * 3f;
+            posY[i] = 0.3f;
+            posZ[i] = z + (rand.nextFloat() - 0.5f) * 3f;
 
-            // Random upward explosion + radial scatter
+            // Dramatic upward explosion + wide radial scatter
             float angle = rand.nextFloat() * (float)(Math.PI * 2);
-            float speed = 3f + rand.nextFloat() * 8f;
-            velX[i] = (float)(Math.cos(angle)) * speed * 0.6f;
-            velY[i] = 5f + rand.nextFloat() * 9f; // strong upward kick
-            velZ[i] = (float)(Math.sin(angle)) * speed * 0.6f;
+            float speed = 4f + rand.nextFloat() * 10f;
+            velX[i] = (float)(Math.cos(angle)) * speed * 0.8f;
+            velY[i] = 7f + rand.nextFloat() * 12f; // bigger upward kick
+            velZ[i] = (float)(Math.sin(angle)) * speed * 0.8f;
         }
     }
 
