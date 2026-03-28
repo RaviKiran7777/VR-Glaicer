@@ -2,23 +2,15 @@ package com.example.vrdesert;
 
 import android.os.Bundle;
 import android.widget.Button;
-import android.widget.TextView;
-import android.widget.Toast;
-import android.widget.ProgressBar;
 import android.opengl.GLSurfaceView;
 import androidx.appcompat.app.AppCompatActivity;
 
-public class MainActivity extends AppCompatActivity implements InteractionManager.InteractionListener {
+public class MainActivity extends AppCompatActivity {
 
     private GLSurfaceView glSurfaceView;
     private VRRenderer vrRenderer;
     private SensorHandler sensorHandler;
-    private InteractionManager interactionManager;
-
-    private BackpackManager backpackManager;
-    private AudioEngine audioEngine;
-    private GameManager gameManager;
-    private MoveServer moveServer;
+    private GazeInfoManager gazeInfoManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -26,33 +18,45 @@ public class MainActivity extends AppCompatActivity implements InteractionManage
         setContentView(R.layout.activity_main);
 
         glSurfaceView = findViewById(R.id.glSurfaceView);
-
-        // Require OpenGL ES 2.0
         glSurfaceView.setEGLContextClientVersion(2);
 
-        sensorHandler = new SensorHandler(this);
-        interactionManager = new InteractionManager(this);
+        sensorHandler   = new SensorHandler(this);
+        gazeInfoManager = new GazeInfoManager();
 
-        vrRenderer = new VRRenderer(sensorHandler, interactionManager);
+        vrRenderer = new VRRenderer(sensorHandler, gazeInfoManager);
         glSurfaceView.setRenderer(vrRenderer);
-        
-        // Render only when data changes or animate continuously
         glSurfaceView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
 
-        backpackManager = new BackpackManager();
-        audioEngine = new AudioEngine();
-        audioEngine.startDesertWind(); // Kick off async background noise
-
-        ProgressBar healthBarLeft = findViewById(R.id.healthBarLeft);
-        ProgressBar healthBarRight = findViewById(R.id.healthBarRight);
-        gameManager = new GameManager(this, healthBarLeft, healthBarRight);
-
+        // MOVE button
         Button btnMove = findViewById(R.id.btnMove);
         btnMove.setOnClickListener(v -> vrRenderer.moveForward());
 
-        // Spawn Native Web Controller Server targeting the Renderer on port 8080!
-        moveServer = new MoveServer(vrRenderer);
-        moveServer.start();
+        // Climate comparison toggle
+        Button btnClimate = findViewById(R.id.btnClimate);
+        btnClimate.setOnClickListener(v -> {
+            boolean newMode = !vrRenderer.isPastMode();
+            vrRenderer.setClimateMode(newMode);
+            btnClimate.setText(newMode ? "TODAY" : "50 YEARS AGO");
+        });
+
+        // Sensitivity toggle: LOW → MED → HIGH cycle
+        Button btnSens = findViewById(R.id.btnSensitivity);
+        btnSens.setOnClickListener(v -> {
+            float cur = sensorHandler.getSensitivity();
+            if (cur < 1.0f) {
+                // Was LOW → go to MED
+                sensorHandler.setSensitivity(1.5f);
+                btnSens.setText("SENS: MED");
+            } else if (cur < 2.0f) {
+                // Was MED → go to HIGH
+                sensorHandler.setSensitivity(2.5f);
+                btnSens.setText("SENS: HIGH");
+            } else {
+                // Was HIGH → go to LOW
+                sensorHandler.setSensitivity(0.8f);
+                btnSens.setText("SENS: LOW");
+            }
+        });
     }
 
     @Override
@@ -67,43 +71,5 @@ public class MainActivity extends AppCompatActivity implements InteractionManage
         super.onPause();
         glSurfaceView.onPause();
         sensorHandler.stop();
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (audioEngine != null) {
-            audioEngine.stopAudio();
-        }
-        if (moveServer != null) {
-            moveServer.stopServer();
-        }
-    }
-
-    @Override
-    public void onObjectCollected(int objectId, GameObject.Type type) {
-        if (gameManager.isGameLocked()) return; // Stop executing collection behaviors if final win-state initiated
-
-        audioEngine.playCollectionSound(); // Ping!
-        Toast.makeText(this, "Collected " + type.name(), Toast.LENGTH_SHORT).show();
-        
-        // Dynamically boost backpack counts
-        switch (type) {
-            case ICE_CORE: backpackManager.addIceCore(); break;
-            case THERMOMETER: backpackManager.addThermometer(); break;
-            case CAMERA_TRAP: backpackManager.addCameraTrap(); break;
-            case SNOW_SAMPLE: backpackManager.addSnowSample(); break;
-        }
-        
-        // Send educational popup to HUD
-        // Needs a reference to the specific GameObject that was collected, but we can reconstruct a dummy to get the fact
-        GameObject dummy = new GameObject(0,0,0, type);
-        vrRenderer.displayFact(dummy.getFact());
-        
-        // Pass to logic threshold checker
-        gameManager.processItemCollection(type, backpackManager);
-        
-        String invText = backpackManager.getInventoryText();
-        vrRenderer.updateInventory(invText);
     }
 }
