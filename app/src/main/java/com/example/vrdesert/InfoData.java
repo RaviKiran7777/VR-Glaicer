@@ -13,6 +13,8 @@ public class InfoData {
     public static final int TARGET_FOX       = 4;
     public static final int TARGET_CALVING   = 5;
     public static final int TARGET_SNOW      = 6;
+    public static final int TARGET_PENGUIN   = 7;
+    public static final int TARGET_OWL       = 8;
 
     public static String getFact(int targetId) {
         switch (targetId) {
@@ -30,6 +32,10 @@ public class InfoData {
                 return "Glacier calving is accelerating.\nThe rate of ice loss has tripled\nin the last two decades due to\nrising global temperatures.";
             case TARGET_SNOW:
                 return "Arctic snowfall patterns are shifting.\nRain is increasingly replacing snow,\ndestabilizing permafrost and altering\nentire ecosystems.";
+            case TARGET_PENGUIN:
+                return "Adélie penguins in Antarctica are\nlosing nesting grounds as sea ice\npatterns shift and more frequent\nrain floods their nests.";
+            case TARGET_OWL:
+                return "Snowy owls are highly dependent on\nlemming populations, which are\ndeclining as warming winters melt\nthe subnivean snow layers.";
             default:
                 return "";
         }

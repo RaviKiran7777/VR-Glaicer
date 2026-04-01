@@ -18,16 +18,33 @@ public class VRRenderer implements GLSurfaceView.Renderer {
     // Environment
     private IceGround iceGround;
     private GlacierWall glacierWall;
+    private GlacierMountain glacierMountain;
+    private IceSpires iceSpires;
+    private IceArches iceArches;
+    private CloudSystem cloudSystem;
     private MeltWater meltWater;
     private SnowParticles snowParticles;
     private SplashParticles splashParticles;
     private CalvingManager calvingManager;
     private Cube iceChunkModel;
+    private IceFloe iceFloe;
 
     // Animals
     private PolarBear polarBear;
     private Seal seal;
     private ArcticFox arcticFox;
+    
+    // New Animal Instances for Populating the Scene
+    private PolarBear polarBearCub;
+    private Seal seal2;
+    private Seal seal3;
+    private ArcticFox arcticFox2;
+
+    // Birds and Antarctic animals
+    private Penguin penguin1;
+    private Penguin penguin2;
+    private Penguin penguin3;
+    private SnowyOwl snowyOwl;
 
     // UI
     private Crosshair crosshair;
@@ -106,6 +123,11 @@ public class VRRenderer implements GLSurfaceView.Renderer {
         // Environment
         iceGround    = new IceGround(shaderProgram);
         glacierWall  = new GlacierWall(shaderProgram, 42L);
+        glacierMountain = new GlacierMountain(shaderProgram);
+        iceSpires       = new IceSpires(shaderProgram);
+        iceArches       = new IceArches(shaderProgram);
+        cloudSystem     = new CloudSystem(0); // Uses its own specialized shader
+
         meltWater    = new MeltWater(50f, 20f);
         snowParticles = new SnowParticles();
         splashParticles = new SplashParticles();
@@ -113,11 +135,24 @@ public class VRRenderer implements GLSurfaceView.Renderer {
         if (soundEngine != null) calvingManager.setSoundEngine(soundEngine);
 
         iceChunkModel = new Cube(shaderProgram, 0.75f, 0.9f, 1.0f);
+        iceFloe       = new IceFloe(shaderProgram, 5.0f);
 
-        // Animals — repositioned for better observation of the glacier face
-        polarBear = new PolarBear(shaderProgram, 12f, 0.1f, -8f);
+        // Animals — Brought closer for better visibility (z > -25)
+        polarBear = new PolarBear(shaderProgram, 12f, 0.1f, -10f);
         seal      = new Seal(shaderProgram, -10f, 0.1f, -14f);
-        arcticFox = new ArcticFox(shaderProgram, 18f, 0.1f, -12f);
+        arcticFox = new ArcticFox(shaderProgram, 16f, 0.1f, -12f);
+        
+        // New Animals — Midground placement
+        polarBearCub = new PolarBear(shaderProgram, 15f, 0.1f, -9f);
+        seal2        = new Seal(shaderProgram, -18f, 0.1f, -16f);
+        seal3        = new Seal(shaderProgram, 20f, 0.1f, -18f);
+        arcticFox2   = new ArcticFox(shaderProgram, -22f, 0.1f, -20f);
+
+        // New Antarctic and Arctic Species
+        penguin1 = new Penguin(shaderProgram, 0f, 0.1f, -15f);
+        penguin2 = new Penguin(shaderProgram, 3f, 0.1f, -14f);
+        penguin3 = new Penguin(shaderProgram, -3f, 0.1f, -16f);
+        snowyOwl = new SnowyOwl(shaderProgram, -18f, 8f, -22f); // On a closer spire
 
         // UI
         crosshair    = new Crosshair();
@@ -125,12 +160,25 @@ public class VRRenderer implements GLSurfaceView.Renderer {
         titleOverlay = new TextOverlay();
         titleOverlay.updateText("VR Glacier Observation");
 
-        // Register all educational gaze targets (Updated for new Z-depths)
+        // Register all educational gaze targets
         gazeInfoManager.registerTarget(InfoData.TARGET_GLACIER, 0f, 12f, -25f, 30f, InfoData.getFact(InfoData.TARGET_GLACIER));
-        gazeInfoManager.registerTarget(InfoData.TARGET_WATER, 0f, 0f, -22f, 25f, InfoData.getFact(InfoData.TARGET_WATER));
-        gazeInfoManager.registerTarget(InfoData.TARGET_BEAR, 12f, 1f, -8f, 5f, InfoData.getFact(InfoData.TARGET_BEAR));
+        gazeInfoManager.registerTarget(InfoData.TARGET_WATER,   0f, 0f, -22f, 25f, InfoData.getFact(InfoData.TARGET_WATER));
+        
+        // WildLife (All brought closer)
+        gazeInfoManager.registerTarget(InfoData.TARGET_BEAR, 12f, 1f, -10f, 6f, InfoData.getFact(InfoData.TARGET_BEAR));
         gazeInfoManager.registerTarget(InfoData.TARGET_SEAL, -10f, 1f, -14f, 5f, InfoData.getFact(InfoData.TARGET_SEAL));
-        gazeInfoManager.registerTarget(InfoData.TARGET_FOX, 18f, 1f, -12f, 4f, InfoData.getFact(InfoData.TARGET_FOX));
+        gazeInfoManager.registerTarget(InfoData.TARGET_FOX,  16f, 1f, -12f, 4f, InfoData.getFact(InfoData.TARGET_FOX));
+
+        gazeInfoManager.registerTarget(100, 15f, 1f, -9f, 4f, InfoData.getFact(InfoData.TARGET_BEAR));
+        gazeInfoManager.registerTarget(101, -18f, 1f, -16f, 5f, InfoData.getFact(InfoData.TARGET_SEAL));
+        gazeInfoManager.registerTarget(102, 20f, 1f, -18f, 5f, InfoData.getFact(InfoData.TARGET_SEAL));
+        gazeInfoManager.registerTarget(103, -22f, 1f, -20f, 4f, InfoData.getFact(InfoData.TARGET_FOX));
+
+        // New Species Gaze Targets
+        gazeInfoManager.registerTarget(200, 0f, 1f, -15f, 4f, InfoData.getFact(InfoData.TARGET_PENGUIN));
+        gazeInfoManager.registerTarget(201, 3f, 1f, -14f, 4f, InfoData.getFact(InfoData.TARGET_PENGUIN));
+        gazeInfoManager.registerTarget(202, -3f, 1f, -16f, 4f, InfoData.getFact(InfoData.TARGET_PENGUIN));
+        gazeInfoManager.registerTarget(203, -18f, 8.5f, -22f, 3f, InfoData.getFact(InfoData.TARGET_OWL));
     }
 
     private int shaderProgram;
@@ -202,31 +250,111 @@ public class VRRenderer implements GLSurfaceView.Renderer {
         Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
         iceGround.draw(scratch);
 
-        if (!isPastMode) {
-            Matrix.setIdentityM(model, 0);
-            Matrix.translateM(model, 0, 0, 0, -25f); // Move wall back
-            Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
-            glacierWall.draw(scratch);
-        }
+        // Render 360-degree environment
+        Matrix.setIdentityM(model, 0);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        glacierMountain.draw(scratch); // Back
+        iceSpires.draw(scratch);       // Left
+        iceArches.draw(scratch);       // Right
+        
+        float globalTime = System.currentTimeMillis() / 1000f;
+        cloudSystem.draw(scratch, globalTime);     // Top
 
-        // 2. ANIMALS (Opaque - Draw before transparent water)
-        // Polar Bear
+        // Main Glacier Wall (Front)
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, 0, 0, -25f);
+        if (isPastMode) {
+            Matrix.scaleM(model, 0, 1.0f, 1.8f, 1.0f);
+        }
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        glacierWall.draw(scratch);
+
+        // 2. ICE FLOES (Opaque platforms for animals)
+        // Floe for Seal 2
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, -18f, 0, -16f);
+        Matrix.scaleM(model, 0, 0.8f, 1.0f, 0.8f);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        iceFloe.draw(scratch);
+
+        // Floe for Polar Bear Family
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, 13.5f, 0, -9.5f);
+        Matrix.scaleM(model, 0, 1.2f, 1.0f, 1.2f);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        iceFloe.draw(scratch);
+
+        // Floe for Seal 3
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, 20f, 0, -18f);
+        Matrix.scaleM(model, 0, 0.8f, 1.0f, 0.8f);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        iceFloe.draw(scratch);
+
+        // Floe for Penguin Colony
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, 0f, 0, -15f);
+        Matrix.scaleM(model, 0, 1.5f, 1.0f, 1.5f);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        iceFloe.draw(scratch);
+
+        // 3. ANIMALS
+        // Original Polar Bear
         Matrix.setIdentityM(model, 0);
         Matrix.translateM(model, 0, polarBear.worldX, polarBear.worldY, polarBear.worldZ);
         Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
         polarBear.draw(scratch);
 
-        // Seal
+        // Original Seal
         Matrix.setIdentityM(model, 0);
         Matrix.translateM(model, 0, seal.worldX, seal.worldY, seal.worldZ);
         Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
         seal.draw(scratch);
 
-        // Arctic Fox
+        // Original Arctic Fox
         Matrix.setIdentityM(model, 0);
         Matrix.translateM(model, 0, arcticFox.worldX, arcticFox.worldY, arcticFox.worldZ);
         Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
         arcticFox.draw(scratch);
+        
+        // New Polar Bear Cub (smaller)
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, polarBearCub.worldX, polarBearCub.worldY, polarBearCub.worldZ);
+        Matrix.scaleM(model, 0, 0.5f, 0.5f, 0.5f);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        polarBearCub.draw(scratch);
+
+        // New Seals
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, seal2.worldX, seal2.worldY, seal2.worldZ);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        seal2.draw(scratch);
+
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, seal3.worldX, seal3.worldY, seal3.worldZ);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        seal3.draw(scratch);
+
+        // New Species
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, penguin1.worldX, penguin1.worldY, penguin1.worldZ);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        penguin1.draw(scratch);
+
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, penguin2.worldX, penguin2.worldY, penguin2.worldZ);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        penguin2.draw(scratch);
+
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, penguin3.worldX, penguin3.worldY, penguin3.worldZ);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        penguin3.draw(scratch);
+
+        Matrix.setIdentityM(model, 0);
+        Matrix.translateM(model, 0, snowyOwl.worldX, snowyOwl.worldY, snowyOwl.worldZ);
+        Matrix.multiplyMM(scratch, 0, vp, 0, model, 0);
+        snowyOwl.draw(scratch);
 
         // 3. TRANSPARENT / ANIMATED ENVIRONMENT (Draw LAST)
         // Static meltwater base
