@@ -15,6 +15,7 @@ public class SoundEngine {
 
     private static final int SAMPLE_RATE = 22050;
     private volatile boolean running = false;
+    private volatile boolean muted = false;
     private Thread ambientThread;
     private final Random rand = new Random();
 
@@ -44,6 +45,9 @@ public class SoundEngine {
         }
     }
 
+    public void setMuted(boolean m) { this.muted = m; }
+    public boolean isMuted() { return muted; }
+
     /** Plays ice cracking sound (non-blocking). */
     public void playCrack() {
         new Thread(() -> playOneShot(crackBuffer, 1.0f), "CrackSFX").start();
@@ -72,6 +76,11 @@ public class SoundEngine {
         float t = 0f;
 
         while (running) {
+            if (muted) {
+                // If muted, just sleep briefly to avoid high CPU usage while loop continues
+                try { Thread.sleep(50); } catch (InterruptedException e) { break; }
+                continue;
+            }
             for (int i = 0; i < buf.length; i++) {
                 float noise = rand.nextFloat() * 2f - 1f;
                 // Double low-pass for soft wind

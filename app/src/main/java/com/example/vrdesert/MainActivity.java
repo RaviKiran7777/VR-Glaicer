@@ -1,9 +1,12 @@
 package com.example.vrdesert;
 
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
+import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.speech.tts.TextToSpeech;
-import android.widget.Button;
-import android.opengl.GLSurfaceView;
+import android.text.format.Formatter;
+import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import java.util.Locale;
 
@@ -16,6 +19,9 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
     private SoundEngine soundEngine;
     private TextToSpeech tts;
     private boolean ttsReady = false;
+
+    private RemoteControlServer remoteServer;
+    private TextView tvUrl;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,7 +40,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
 
         // When any fact triggers, speak it
         gazeInfoManager.setOnFactListener(factText -> {
-            if (ttsReady && tts != null) {
+            if (ttsReady && tts != null && !soundEngine.isMuted()) {
                 tts.speak(factText, TextToSpeech.QUEUE_FLUSH, null, "fact");
             }
         });
@@ -44,33 +50,45 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         glSurfaceView.setRenderer(vrRenderer);
         glSurfaceView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
 
-        // MOVE button
-        Button btnMove = findViewById(R.id.btnMove);
-        btnMove.setOnClickListener(v -> vrRenderer.moveForward());
+        // Display IP for remote control
+        tvUrl = findViewById(R.id.tvUrl);
+        updateIpDisplay();
+    }
 
-        // Climate comparison toggle
-        Button btnClimate = findViewById(R.id.btnClimate);
-        btnClimate.setOnClickListener(v -> {
-            boolean newMode = !vrRenderer.isPastMode();
-            vrRenderer.setClimateMode(newMode);
-            btnClimate.setText(newMode ? "TODAY" : "50 YEARS AGO");
-        });
+    private void updateIpDisplay() {
+        WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        String ip = Formatter.formatIpAddress(wm.getConnectionInfo().getIpAddress());
+        tvUrl.setText("Remote: http://" + ip + ":8080");
+    }
 
-        // Sensitivity toggle: LOW → MED → HIGH cycle
-        Button btnSens = findViewById(R.id.btnSensitivity);
-        btnSens.setOnClickListener(v -> {
-            float cur = sensorHandler.getSensitivity();
-            if (cur < 1.0f) {
-                sensorHandler.setSensitivity(1.5f);
-                btnSens.setText("SENS: MED");
-            } else if (cur < 2.0f) {
-                sensorHandler.setSensitivity(2.5f);
-                btnSens.setText("SENS: HIGH");
-            } else {
-                sensorHandler.setSensitivity(0.8f);
-                btnSens.setText("SENS: LOW");
-            }
-        });
+    // --- Remote Control Callbacks ---
+
+    public void onRemoteMove() {
+        vrRenderer.moveForward();
+    }
+
+    public void onRemoteReset() {
+        sensorHandler.resetView();
+    }
+
+    public void onRemoteClimateToggle() {
+        boolean newMode = !vrRenderer.isPastMode();
+        vrRenderer.setClimateMode(newMode);
+    }
+
+    public void onRemoteSensitivityCycle() {
+        float cur = sensorHandler.getSensitivity();
+        if (cur < 1.0f) sensorHandler.setSensitivity(1.5f);
+        else if (cur < 2.0f) sensorHandler.setSensitivity(2.5f);
+        else sensorHandler.setSensitivity(0.8f);
+    }
+
+    public void onRemoteSoundToggle() {
+        boolean newMuteState = !soundEngine.isMuted();
+        soundEngine.setMuted(newMuteState);
+        if (newMuteState && tts != null) {
+            tts.stop(); // Immediately stop current speech if muting
+        }
     }
 
     @Override
@@ -88,6 +106,9 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         glSurfaceView.onResume();
         sensorHandler.start();
         soundEngine.start();
+
+        remoteServer = new RemoteControlServer(8080, this);
+        remoteServer.start();
     }
 
     @Override
@@ -97,6 +118,11 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         sensorHandler.stop();
         soundEngine.stop();
         if (tts != null) tts.stop();
+
+        if (remoteServer != null) {
+            remoteServer.stopServer();
+            remoteServer = null;
+        }
     }
 
     @Override

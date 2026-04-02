@@ -83,4 +83,11 @@ public class SensorHandler implements SensorEventListener {
     public float getPitch() { return currentPitch; }
     public void setSensitivity(float s) { this.sensitivity = s; }
     public float getSensitivity() { return sensitivity; }
+
+    public void resetView() {
+        this.targetYaw = 0;
+        this.targetPitch = 0;
+        this.currentYaw = 0;
+        this.currentPitch = 0;
+    }
 }
